@@ -1,0 +1,10 @@
+name = "FlashAttention"
+uuid = "27a6853a-8a5f-49fa-a004-74bad6c16726"
+authors = ["Nikola Janjusevic <nikopjj@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MLUtils = "f1d291b0-491e-4a28-83b9-f70985020b54"
+NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
