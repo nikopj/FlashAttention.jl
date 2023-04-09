@@ -56,3 +56,21 @@ function windowed_dpa(q::AbstractArray{T, N}, k::AbstractArray{T, N}, v::Abstrac
     return y, P
 end
     
+function circulant_dpa(q::AbstractArray{T, 3}, k::AbstractArray{T, 3}, v::AbstractArray{T, 3}, windowsize; kws...) where {T, N}
+    @assert size(q, 1) == size(k, 1) && size(k, 1) == size(v, 1)
+
+    S = circulant(size(q, 1), windowsize, T)
+
+    for n in 1:size(S, 1)*size(S, 2)
+        i, j = cartesian_circulant(n, size(S, 1), windowsize)
+        # 1xdxb X 1xdxb -> 1x1xb
+
+        # we want a new struct that holds a batched circulant matrix.
+        # ex. 
+        # struct
+        #   nzval::AbstractArray{T, 3}
+        #   dims::
+        # end
+    end
+end
+

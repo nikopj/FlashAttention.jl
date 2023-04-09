@@ -2,7 +2,7 @@ using NNlib
 using Test
 using FlashAttention
 
-@testset "naive DPA vs NNlib" begin
+@testset "naive vs flash vs NNlib" begin
 Nkv = 30
 Nq  = 30
 dqk = 12
@@ -18,8 +18,9 @@ y0, P0 = dot_product_attention(
 )
 
 y1, P1 = dense_dpa(q, k, v)
+y2 = first(dense_fa(q, k, v))
 
 @test y1 ≈ permutedims(y0, (2, 1, 3))
+@test y2 ≈ y1
 end
-
 

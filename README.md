@@ -1,5 +1,6 @@
 # FlashAttention.jl
-Julia implementation of flash-attention operation for neural networks.
+Julia implementation of [Flash-Attention](https://github.com/HazyResearch/flash-attention),
+a fused kernel for dot-product attention operation in transformer neural networks.
 
 ### Recommended Julia Install Method
 Install Julia via the [juliaup](https://github.com/JuliaLang/juliaup) manager:
