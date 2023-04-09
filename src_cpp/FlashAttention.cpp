@@ -104,13 +104,17 @@ void OneDParallelCPU(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const E
     const int d = Q.cols(); // dimension of each query/key/value vector
 
     if(wsize != 0)
-    {
+    {   
+        #pragma omp parallel
+{       
+        #pragma omp for
         for (long i = 0; i < N/wsize; i++)
         {
             Eigen::MatrixXd O_i = O.block(i*wsize,0,wsize,d);
             OneDParallelCPU(Q.block(i*wsize,0,wsize,d), K.block(i*wsize,0,wsize,d),V.block(i*wsize,0,wsize,d),O_i, cache, 0);
             O.block(i*wsize,0,wsize,d) = O_i;
         }
+}
         return;
     }
 
@@ -178,10 +182,10 @@ int main()
     // cout<<O1<<endl;
     // cout<<O<<endl;
 
-    omp_set_num_threads(4);
-    int Ns[] = {2048, 2048*8, 2048*32};
-    int Ds[] = {32, 64, 128};
-    int caches[] = {2048*16, 2048*64};
+    omp_set_num_threads(omp_get_num_procs());
+    int Ns[] = {2048*256*4};
+    int Ds[] = {32};
+    int caches[] = {2048*16, 2048*256};
     double tt1 = 0.0, tt2 = 0.0, tt3 = 0.0;
     printf("N     d    Fast      parallel   cacheFast  cacheParallel\n");
     for(auto d : Ds)
@@ -205,7 +209,7 @@ int main()
             for(auto cache : caches)
             {
                 tt1 = omp_get_wtime();
-                OneDFast(Q,K,V,O,cache);
+                OneDFast(Q,K,V,O,cache, 64);
                 tt2 = omp_get_wtime();
                 double error = (O.array() - O1.array()).abs().sum();
                 if(minimT > tt2-tt1)
@@ -215,7 +219,7 @@ int main()
                     minimError = error;
                 }
                 tt1 = omp_get_wtime();
-                OneDParallelCPU(Q,K,V,O,cache);
+                OneDParallelCPU(Q,K,V,O,cache, 64);
                 tt2 = omp_get_wtime();
                 error = (O.array() - O1.array()).abs().sum();
                 if(minimT2 > tt2-tt1)
