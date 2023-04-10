@@ -1,18 +1,40 @@
 
-function dense_dpa(q::AbstractArray{T, N}, k::AbstractArray{T, N}, v::AbstractArray{T, N}) where {T, N}
-    dqk = size(q, N-1)
-    dv  = size(v, N-1)
-
-    Q = reshape(q, :, dqk, size(q, N))
-    K = reshape(k, :, dqk, size(q, N))
-    V = reshape(v, :, dv,  size(q, N))
-
+function dense_dpa(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3}) where T
+    d = size(q, 2)
     S = (Q ⊠ batched_transpose(K)) ./ T(sqrt(dqk))  # similarity matrix
     P = softmax(S, dims=2)                          # adjacency matrix
     O = P ⊠ V                                       # output
+    return O, P
+end
 
-    y = reshape(O, size(q)[1:N-2]..., dv, :)
+function dense_dpa(q::AbstractArray{T, N}, k::AbstractArray{T, N}, v::AbstractArray{T, N}) where {T, N}
+    dqk = size(q, N-1)
+    dvo = size(v, N-1)
+    bs  = size(q, N)
+
+    Q = reshape(q, :, dqk, bs)
+    K = reshape(k, :, dqk, bs)
+    V = reshape(v, :, dvo, bs)
+
+    O, P = dense_dpa(Q, K, V)
+
+    y = reshape(O, size(q)[1:N-2]..., dvo, bs)
     return y, P
+end
+
+function dense_dpa_backward(
+    Q::AbstractArray{T, 3}, 
+    K::AbstractArray{T, 3}, 
+    V::AbstractArray{T, 3}, 
+    P::AbstractArray{T, 3},
+    dO::AbstractArray{T, 3}) where T
+
+    dV = batched_transpose(dP) ⊠ dO
+    dP = dO ⊠ batched_transpose(V)
+    dS = P .* (dP .- sum(P .* dP, dims=2))
+    dQ = (dS ⊠ K) ./ T(sqrt(d))
+    dK = (batched_transpose(dS) ⊠ Q) ./ T(sqrt(d))
+    return dQ, dK, dV
 end
 
 function window(x::AbstractArray{T, N}, windowsize; stride=windowsize, pad=0) where {T, N}

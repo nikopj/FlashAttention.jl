@@ -1,8 +1,9 @@
 using BenchmarkTools
+using FlashAttention
 
-N = 25^2
-d = 64
-bs = 16
+N = 15^2
+d = 32
+bs = 8
 q, k, v = rand(N, d, bs), rand(N, d, bs), rand(N, d, bs)
 
 M = 1024000
@@ -14,7 +15,8 @@ Tr = cld(N, Br)
 Tc = cld(N, Bc)
 
 @show (Br, Bc) (Tr, Tc)
-@show first(dense_dpa(q,k,v)) ≈ first(dense_fa(q,k,v))
+y = first(dense_dpa(q,k,v))
+@show y ≈ first(dense_fa(q,k,v))
 
 @btime dense_dpa(q, k, v);
 @btime dense_fa(q, k, v);

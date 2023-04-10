@@ -1,6 +1,7 @@
 module FlashAttention
 
 using Base.Threads
+using LoopVectorization
 using LinearAlgebra, SparseArrays
 using NNlib, MLUtils
 # using CUDA, CUDA.CUSPARSE
