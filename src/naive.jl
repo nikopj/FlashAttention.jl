@@ -1,7 +1,7 @@
 
 function dense_dpa(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3}) where T
-    d = size(q, 2)
-    S = (Q ⊠ batched_transpose(K)) ./ T(sqrt(dqk))  # similarity matrix
+    d = size(Q, 2)
+    S = (Q ⊠ batched_transpose(K)) ./ T(sqrt(d))  # similarity matrix
     P = softmax(S, dims=2)                          # adjacency matrix
     O = P ⊠ V                                       # output
     return O, P

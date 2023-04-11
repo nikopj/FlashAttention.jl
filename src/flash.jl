@@ -11,16 +11,17 @@ function dense_fa(q::AbstractArray{T, D}, k::AbstractArray{T, D}, v::AbstractArr
     return y, l, m
 end
 
-function dense_fa(Q::AbstractArray{T, D}, K::AbstractArray{T, D}, V::AbstractArray{T, D}) where {T, D}
-    const M  = 1024000 # SRAM size
-    N, batchsize = size(q, 1), size(q, D)
-    d  = size(q, D-1)
+function dense_fa(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3}) where {T}
+    M = 32000 # SRAM size
+    N, d, batchsize = size(Q)
 
     # row/column block-length
-    Br = min(d, cld(M, 4*d*batchsize))
-    Bc = cld(M, 4*d*batchsize)
+    Bc = clamp(ceil(Int, M/d), 1, N)
+    Br = clamp(min(d, ceil(Int, M/2d)), 1, N)
+    Bb = 1
 
     # num row/column blocks
+    Tb = cld(batchsize, Bb)
     Tr = cld(N, Br)
     Tc = cld(N, Bc)
 
@@ -28,43 +29,56 @@ function dense_fa(Q::AbstractArray{T, D}, K::AbstractArray{T, D}, V::AbstractArr
     O = similar(V)
     l = similar(Q, N, 1, batchsize)
     m = similar(Q, N, 1, batchsize)
+    τ = one(T)/T(sqrt(d))
 
     fill!(O, zero(T))
     fill!(l, zero(T))
     fill!(m, T(-Inf))
 
-    @threads for i=1:Tr
+    @threads for c in CartesianIndices((Tb, Tr))
+        b, i = c.I
+        start_bdx = (b-1)*Bb + 1
+        end_bdx = min(batchsize, b*Bb)
+
         start_idx = (i-1)*Br + 1
         end_idx = min(N, i*Br)
-        Qi = @view Q[start_idx:end_idx, :, :]
-        Oi = O[start_idx:end_idx, :, :]
-        li = l[start_idx:end_idx, :, :]
-        mi = m[start_idx:end_idx, :, :]
+
+        Qi = Q[start_idx:end_idx, :, start_bdx:end_bdx]
+        Oi = O[start_idx:end_idx, :, start_bdx:end_bdx]
+        li = l[start_idx:end_idx, :, start_bdx:end_bdx]
+        mi = m[start_idx:end_idx, :, start_bdx:end_bdx]
+
+        Oi_new = similar(Oi)
+        mij = similar(mi)
+        lij = similar(li)
+        mi_new = similar(mi)
+        li_new = similar(li)
 
         for j=1:Tc
             start_jdx = (j-1)*Bc + 1
             end_jdx = min(N, j*Bc)
-            Kj = @view K[start_jdx:end_jdx, :, :]
-            Vj = @view V[start_jdx:end_jdx, :, :]
+            Kj = K[start_jdx:end_jdx, :, start_bdx:end_bdx]
+            Vj = V[start_jdx:end_jdx, :, start_bdx:end_bdx]
+            Pij = similar(Qi, size(Qi, 1), size(Kj, 1), size(Qi, 3))
+             
+            batched_mul!(Pij, Qi, batched_transpose(Kj), τ)
+            maximum!(mij, Pij)
+            @. Pij = exp(Pij - mij)                          
+            sum!(lij, Pij)
 
-            Sij = (Qi ⊠ batched_transpose(Kj)) ./ T(sqrt(d))  # similarity matrix
-            mij = maximum(Sij, dims=2)                          
-
-            Pij = @. exp(Sij - mij)                           # adjacency matrix
-            lij = sum(Pij, dims=2)
-
-            mi_new = max.(mi, mij)
-            li_new = @. exp(mi - mi_new)*li + exp(mij - mi_new)*lij
+            @. mi_new = max(mi, mij)
+            @. li_new = exp(mi - mi_new)*li + exp(mij - mi_new)*lij
 
             # write back to memory
-            @. Oi = (li*exp(mi - mi_new)*Oi + exp(mij - mi_new)*$batched_mul(Pij, Vj)) / li_new
+            batched_mul!(Oi_new, Pij, Vj)
+            @. Oi = (li*exp(mi - mi_new)*Oi + exp(mij - mi_new)*Oi_new) / li_new
             li .= li_new
             mi .= mi_new
         end
 
-        O[start_idx:end_idx, :, :] = Oi 
-        l[start_idx:end_idx, :, :] = li 
-        m[start_idx:end_idx, :, :] = mi 
+        O[start_idx:end_idx, :, start_bdx:end_bdx] = Oi 
+        l[start_idx:end_idx, :, start_bdx:end_bdx] = li 
+        m[start_idx:end_idx, :, start_bdx:end_bdx] = mi 
     end
     return O, l, m
 end
@@ -78,7 +92,7 @@ function dense_fa_backward(
     l::AbstractArray{T, 3},
     m::AbstractArray{T, 3}) where T
 
-    const M  = 1024000 # SRAM size
+    M  = 1024000 # SRAM size
     N, batchsize = size(q, 1), size(q, D)
     d  = size(q, D-1)
 
