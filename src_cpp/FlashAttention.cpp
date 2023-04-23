@@ -16,7 +16,6 @@ void OneDNaive(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::
     const int N = Q.rows(); // number of queries
     const int d = Q.cols(); // dimension of each query/key/value vector
     
-
     if(wsize == 0)
     {   
         Eigen::MatrixXd S(N,N); // attention scores
@@ -182,7 +181,7 @@ int main()
     int repeat = 1000;
     int Ns[] = {256, 512};
     int Ds[] = {32,64};
-    int caches[] = {24000,4000};
+    int caches[] = {24000};
 
     double tt1 = 0.0, tt2 = 0.0, tt3 = 0.0;
     printf("N     d    Naive       Fast     parallel cacheFast   cacheParallel   errorFast   errorParallel\n");
