@@ -11,7 +11,7 @@
 #include <limits>
 using namespace std;
 
-void OneDNaive(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::MatrixXd& V, Eigen::MatrixXd& O, long wsize = 0) {
+void OneDNaive(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::MatrixXd& V, Eigen::MatrixXd& O, long wsize = 0, double lambda = 1.0) {
 
     const int N = Q.rows(); // number of queries
     const int d = Q.cols(); // dimension of each query/key/value vector
@@ -22,7 +22,7 @@ void OneDNaive(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::
         Eigen::MatrixXd S(N,N); // attention scores
         S.setZero();
         // Compute attention scores
-        S = Q*(K.transpose());
+        S = lambda*Q*(K.transpose());
         //Softmax scores
         Eigen::VectorXd Max = S.rowwise().maxCoeff();
         Eigen::MatrixXd P = (S.colwise() - Max).array().exp().matrix();
@@ -39,14 +39,14 @@ void OneDNaive(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::
         for (long i = 0; i < T; i++)
         {
             Eigen::MatrixXd O_i = O.block(i*wsize,0,wsize,d);
-            OneDNaive(Q.block(i*wsize,0,wsize,d), K.block(i*wsize,0,wsize,d),V.block(i*wsize,0,wsize,d),O_i,0);
+            OneDNaive(Q.block(i*wsize,0,wsize,d), K.block(i*wsize,0,wsize,d),V.block(i*wsize,0,wsize,d),O_i,0,lambda);
             O.block(i*wsize,0,wsize,d) = O_i;
         }
     }
     
 }
 
-void OneDFast(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::MatrixXd& V, Eigen::MatrixXd& O, long cache, long wsize = 0)
+void OneDFast(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::MatrixXd& V, Eigen::MatrixXd& O, long cache, long wsize = 0, double lambda = 1.0)
 {
     const int N = Q.rows(); // number of queries
     const int d = Q.cols(); // dimension of each query/key/value vector
@@ -55,7 +55,7 @@ void OneDFast(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::M
         for (long i = 0; i < N/wsize; i++)
         {
             Eigen::MatrixXd O_i = O.block(i*wsize,0,wsize,d);
-            OneDFast(Q.block(i*wsize,0,wsize,d), K.block(i*wsize,0,wsize,d),V.block(i*wsize,0,wsize,d),O_i, cache, 0);
+            OneDFast(Q.block(i*wsize,0,wsize,d), K.block(i*wsize,0,wsize,d),V.block(i*wsize,0,wsize,d),O_i, cache, 0, lambda);
             O.block(i*wsize,0,wsize,d) = O_i;
         }
         return;
@@ -64,6 +64,7 @@ void OneDFast(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::M
     const int Bc = ceil(1.0*cache / (4 * d));
     const int Br = min(Bc, d);
     const int Tc = ceil(1.0*N / Bc), Tr = ceil(1.0*N / Br);
+    // printf("Tc = %d, Tr = %d, Bc = %d, Br = %d\n",Tc,Tr,Bc,Br);
     Eigen::VectorXd l(N),m(N);
     m.setConstant(-numeric_limits<double>::infinity());
     l.setConstant(0.0);
@@ -79,7 +80,7 @@ void OneDFast(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::M
             Eigen::MatrixXd Q_i = Q.block(i*Br, 0, colr, d);
             Eigen::VectorXd l_i = l.segment(Br*i, colr);
             Eigen::VectorXd m_i = m.segment(Br*i, colr);
-            Eigen::MatrixXd S_ij = Q_i*K_j;
+            Eigen::MatrixXd S_ij = Q_i*K_j*lambda;
             Eigen::VectorXd m_ij = S_ij.rowwise().maxCoeff();
             Eigen::MatrixXd P_ij = (S_ij.colwise() - m_ij).array().exp().matrix();
             Eigen::VectorXd l_ij = P_ij.rowwise().sum().array();
@@ -98,23 +99,20 @@ void OneDFast(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::M
     }
 }
 
-void OneDParallelCPU(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::MatrixXd& V, Eigen::MatrixXd& O, long cache, long wsize = 0)
+void OneDParallelCPU(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::MatrixXd& V, Eigen::MatrixXd& O, long cache, long wsize = 0, double lambda = 1.0)
 {
     const int N = Q.rows(); // number of queries
     const int d = Q.cols(); // dimension of each query/key/value vector
 
     if(wsize != 0)
     {   
-        #pragma omp parallel
-{       
-        #pragma omp for
+        #pragma omp parallel for
         for (long i = 0; i < N/wsize; i++)
         {
             Eigen::MatrixXd O_i = O.block(i*wsize,0,wsize,d);
-            OneDParallelCPU(Q.block(i*wsize,0,wsize,d), K.block(i*wsize,0,wsize,d),V.block(i*wsize,0,wsize,d),O_i, cache, 0);
+            OneDParallelCPU(Q.block(i*wsize,0,wsize,d), K.block(i*wsize,0,wsize,d),V.block(i*wsize,0,wsize,d),O_i, cache, 0, lambda);
             O.block(i*wsize,0,wsize,d) = O_i;
         }
-}
         return;
     }
 
@@ -140,7 +138,7 @@ void OneDParallelCPU(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const E
             Eigen::VectorXd m_i = m.segment(Br*i, colr);
             Eigen::MatrixXd K_j = K.block(j*Bc, 0, colc, d).transpose();
             Eigen::MatrixXd V_j = V.block(j*Bc, 0, colc, d);
-            Eigen::MatrixXd S_ij = Q_i*K_j;
+            Eigen::MatrixXd S_ij = Q_i*K_j*lambda;
             Eigen::VectorXd m_ij = S_ij.rowwise().maxCoeff();
             Eigen::MatrixXd P_ij = (S_ij.colwise() - m_ij).array().exp().matrix();
             Eigen::VectorXd l_ij = P_ij.rowwise().sum().array();
@@ -157,6 +155,7 @@ void OneDParallelCPU(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const E
     O.block(i*Br, 0, colr, d) = O_i;
     }
 }
+
 int main()
 {
     // int N = 3, d = 3;
@@ -179,12 +178,14 @@ int main()
     // cout<<O<<endl;a
 
     omp_set_num_threads(omp_get_num_procs()); 
+    omp_set_nested(1);
     int repeat = 1000;
     int Ns[] = {256, 512};
     int Ds[] = {32,64};
-    int caches[] = {24000};
+    int caches[] = {24000,4000};
+
     double tt1 = 0.0, tt2 = 0.0, tt3 = 0.0;
-    printf("N     d    Naive       Fast      parallel   cacheFast   cacheParallel   errorFast   errorParallel\n");
+    printf("N     d    Naive       Fast     parallel cacheFast   cacheParallel   errorFast   errorParallel\n");
     for(auto d : Ds)
     {
         for(auto N : Ns)
@@ -235,7 +236,6 @@ int main()
                 }
             }
             printf("%d  %d  %fs   %fs  %fs  %ld   %ld   %f  %f\n", N, d, naive, minimT, minimT2, minimCache, minimCache2, minimError, minimError2);
-            // printf("%d  %d  %fs  %fs  %ld    %ld\n", N, d, minimT, minimT2, minimCache ,minimCache2);
         }
     }
    return 0;
