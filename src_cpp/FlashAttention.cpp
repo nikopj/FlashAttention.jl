@@ -155,6 +155,108 @@ void OneDParallelCPU(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const E
     }
 }
 
+void OneDNaiveBack(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::MatrixXd& V, const Eigen::MatrixXd& P, const Eigen::MatrixXd& dO, 
+                    Eigen::MatrixXd& dQ, Eigen::MatrixXd& dK, Eigen::MatrixXd& dV, long wsize = 0, double lambda = 1.0) {
+
+    const int N = Q.rows(); // number of queries
+    const int d = Q.cols(); // dimension of each query/key/value vector
+
+    if(wsize == 0)
+    {   
+        dV = P.transpose()*dO;
+        Eigen::MatrixXd dP = dO*V.transpose();
+        Eigen::VectorXd B = (P.cwiseProduct(dP)).rowwise().sum();
+        Eigen::MatrixXd C = (dP.colwise() - B);
+        Eigen::MatrixXd dS = P.cwiseProduct(C);
+        dQ = dS*K*lambda;
+        dK = dS.transpose()*Q*lambda;
+    }
+    else
+    {
+        long T = N/wsize;
+        for (long i = 0; i < T; i++)
+        {
+            Eigen::MatrixXd dQ_i = dQ.block(i*wsize,0,wsize,d);
+            Eigen::MatrixXd dK_i = dK.block(i*wsize,0,wsize,d);
+            Eigen::MatrixXd dV_i = dV.block(i*wsize,0,wsize,d);
+            OneDNaiveBack(Q.block(i*wsize,0,wsize,d), K.block(i*wsize,0,wsize,d),V.block(i*wsize,0,wsize,d),dO.block(i*wsize,0,wsize,d),
+            P.block(i*wsize,0,wsize,d),dQ_i,dK_i,dV_i,0,lambda);
+            dQ.block(i*wsize,0,wsize,d) = dQ_i;
+            dK.block(i*wsize,0,wsize,d) = dK_i;
+            dV.block(i*wsize,0,wsize,d) = dV_i;
+        }
+    }
+}
+
+void OneDFastBack(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::MatrixXd& V, const Eigen::MatrixXd& O, const Eigen::MatrixXd& dO, 
+                    Eigen::MatrixXd& dQ, Eigen::MatrixXd& dK, Eigen::MatrixXd& dV, const Eigen::VectorXd& l, const Eigen::VectorXd& m, 
+                    long cache, long wsize = 0, double lambda = 1.0)
+{
+    const int N = Q.rows(); // number of queries
+    const int d = Q.cols(); // dimension of each query/key/value vector
+    if(wsize != 0)
+    {
+        long T = N/wsize;
+        for (long i = 0; i < T; i++)
+        {
+            Eigen::MatrixXd dQ_i = dQ.block(i*wsize,0,wsize,d);
+            Eigen::MatrixXd dK_i = dK.block(i*wsize,0,wsize,d);
+            Eigen::MatrixXd dV_i = dV.block(i*wsize,0,wsize,d);
+            OneDFastBack(Q.block(i*wsize,0,wsize,d), K.block(i*wsize,0,wsize,d),V.block(i*wsize,0,wsize,d),O.block(i*wsize,0,wsize,d),
+            dO.block(i*wsize,0,wsize,d), dQ_i,dK_i,dV_i,l.segment(i*wsize, 0), m.segment(i*wsize, 0),0,lambda);
+            dQ.block(i*wsize,0,wsize,d) = dQ_i;
+            dK.block(i*wsize,0,wsize,d) = dK_i;
+            dV.block(i*wsize,0,wsize,d) = dV_i;
+        }
+        return;
+    }
+
+    const int Bc = ceil(1.0*cache / (4 * d));
+    const int Br = min(Bc, d);
+    const int Tc = ceil(1.0*N / Bc), Tr = ceil(1.0*N / Br);
+    // printf("Tc = %d, Tr = %d, Bc = %d, Br = %d\n",Tc,Tr,Bc,Br);
+
+    for (int i = 0; i < Tr; i++)
+    {
+        long colr = min(Br, N - i*Br);
+        Eigen::MatrixXd dQ_i = dQ.block(i*Br, 0, colr, d);
+        Eigen::MatrixXd dO_i = dO.block(i*Br, 0, colr, d);
+        Eigen::MatrixXd O_i = O.block(i*Br, 0, colr, d);
+        Eigen::MatrixXd Q_i = Q.block(i*Br, 0, colr, d);
+        Eigen::VectorXd l_i = l.segment(Br*i, colr);
+        Eigen::VectorXd m_i = m.segment(Br*i, colr);
+
+        for (int j = 0; j < Tc; j++)
+        {
+            long colc = min(Bc, N - j*Bc);
+            Eigen::MatrixXd K_j = K.block(j*Bc, 0, colc, d).transpose();
+            Eigen::MatrixXd V_j = V.block(j*Bc, 0, colc, d);
+            Eigen::MatrixXd dK_j = dK.block(j*Bc, 0, colc, d);
+            Eigen::MatrixXd dV_j = dV.block(j*Bc, 0, colc, d);
+
+            Eigen::MatrixXd S_ij = lambda*Q_i*K_j;
+            Eigen::MatrixXd P_ij = (S_ij.colwise() - m_i).array().exp().matrix();
+            P_ij = P_ij.colwise()/l_i;
+            dV_j = dV_j + P_ij*dO_i;
+            Eigen::MatrixXd dP_ij = dO_i*V_j.transpose();
+            Eigen::VectorXd D_i = (dO_i.cwiseProduct(O_i)).rowwise().sum();
+            Eigen::MatrixXd dS_ij = P_ij.cwiseProduct(dP_ij.colwise() - D_i);
+            dQ_i = dQ_i + lambda*dS_ij*K_j;
+            dK_j = dK_j +  lambda*dS_ij.transpose()*Q_i;
+            dV.block(j*Bc, 0, colc, d) = dV_j;
+            dK.block(j*Bc, 0, colc, d) = dK_j;
+        }
+        dQ.block(i*Br, 0, colr, d) = dQ_i;
+    }
+}
+
+void OneDParallelCPUBack(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eigen::MatrixXd& V, const Eigen::MatrixXd& O, const Eigen::MatrixXd& dO, 
+                    Eigen::MatrixXd& dQ, Eigen::MatrixXd& dK, Eigen::MatrixXd& dV, const Eigen::VectorXd& l, const Eigen::VectorXd& m, 
+                    long cache, long wsize = 0, double lambda = 1.0)
+{
+    
+}
+
 int main()
 {
     // int N = 3, d = 3;
@@ -185,6 +287,59 @@ int main()
 
     double tt1 = 0.0, tt2 = 0.0, tt3 = 0.0;
     printf("N     d    Naive       Fast     parallel cacheFast   cacheParallel   errorFast   errorParallel\n");
+    for(auto d : Ds)
+    {
+        for(auto N : Ns)
+        {
+            Eigen::MatrixXd Q(N,d),K(N,d),V(N,d),O(N,d),O1(N,d);
+            Q.setRandom();
+            K.setRandom();
+            V.setRandom();
+            O1.setZero();
+            O.setZero();
+            tt1 = omp_get_wtime();
+            for(int k = 0; k < repeat; k++)
+            {
+                OneDNaive(Q, K, V, O1);        
+            }
+            tt2 = omp_get_wtime();
+            double naive = tt2-tt1;
+            double minimT = numeric_limits<double>::infinity(), minimError = 0.0;
+            double minimT2 = numeric_limits<double>::infinity(), minimError2 = 0.0;
+            long minimCache = 0, minimCache2 = 0;
+            for(auto cache : caches)
+            {
+                tt1 = omp_get_wtime();
+                for(int k = 0; k < repeat; k++)
+                {
+                    OneDFast(Q,K,V,O,cache);        
+                }
+                tt2 = omp_get_wtime();
+                double error = (O.array() - O1.array()).abs().sum();
+                if(minimT > tt2-tt1)
+                {
+                    minimT = tt2-tt1;
+                    minimCache = cache;
+                    minimError = error;
+                }
+                tt1 = omp_get_wtime();
+                for(int k = 0; k < repeat; k++)
+                {
+                    OneDParallelCPU(Q,K,V,O,cache);        
+                }
+                tt2 = omp_get_wtime();
+                error = (O.array() - O1.array()).abs().sum();
+                if(minimT2 > tt2-tt1)
+                {
+                    minimT2 = tt2-tt1;
+                    minimCache2 = cache;
+                    minimError2 = error;
+                }
+            }
+            printf("%d  %d  %fs   %fs  %fs  %ld   %ld   %f  %f\n", N, d, naive, minimT, minimT2, minimCache, minimCache2, minimError, minimError2);
+        }
+    }
+    
     for(auto d : Ds)
     {
         for(auto N : Ns)
