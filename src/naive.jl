@@ -77,20 +77,35 @@ function windowed_dpa(q::AbstractArray{T, N}, k::AbstractArray{T, N}, v::Abstrac
     return y, P
 end
     
-function circulant_dpa(q::AbstractArray{T, 3}, k::AbstractArray{T, 3}, v::AbstractArray{T, 3}, windowsize; kws...) where {T, N}
-    @assert size(q, 1) == size(k, 1) && size(k, 1) == size(v, 1)
+function circulant_dpa(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3}, W::Int) where T
+    N, d, batchsize = size(Q)
+    τ = one(T) / T(sqrt(d))
+    S = similar(Q, N, W, batchsize)
+    O = similar(Q, N, size(V, 2), batchsize)
 
-    S = circulant(size(q, 1), windowsize, T)
-
-    for n in 1:size(S, 1)*size(S, 2)
-        i, j = cartesian_circulant(n, size(S, 1), windowsize)
-        # 1xdxb X 1xdxb -> 1x1xb
-
-        # we want a new struct that holds a batched circulant matrix.
-        # ex. 
-        # struct
-        #   nzval::AbstractArray{T, 3}
-        #   dims::
-        # end
+    # form similarity matrix
+    @threads for idx in CartesianIndices((N, W, batchsize))
+        ii, ww, bb = idx.I
+        n = (ii-1)*W + ww
+        jj = cartesian_circulant(n, N, W)[1]
+        S[ii, ww, bb] = τ * sum(Q[ii, :, bb].*K[jj, :, bb])
     end
+
+    # normalize
+    P = softmax(S, dims=2)
+
+    # CHANGE TO BLAS SPARSE-MAT x DENSE-VEC
+    # attend
+    @threads for idx in CartesianIndices((N, d, batchsize))
+        ii, dd, bb = idx.I
+        t = zero(T)
+        for ww=1:W
+            n = (ii-1)*W + ww
+            jj = cartesian_circulant(n, N, W)[1]
+            t += P[ii, ww, bb] * V[jj, dd, bb]
+        end
+        O[ii, dd, bb] = t
+    end
+
+    return O, P
 end
