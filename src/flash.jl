@@ -1,3 +1,15 @@
+function row_softmax!(P::AbstractArray{T, 3}, S::AbstractArray{T, 3}) where T
+    @threads for c in CartesianIndices((size(S, 1), size(S, 3)))
+        i, b = c.I
+        s = S[i, :, b] # load row
+        s_minus_max = s - maximum(s)
+        numerator   = exp.(s_minus_max)
+        denominator = sum(numerator)
+        P[i, :, b] = numerator ./ denominator
+    end
+    return P
+end
+        
 function dense_fa(q::AbstractArray{T, D}, k::AbstractArray{T, D}, v::AbstractArray{T, D}) where {T, D}
     d  = size(q, D-1)
     dv = size(v, D-1)
