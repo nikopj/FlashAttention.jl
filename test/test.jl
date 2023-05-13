@@ -20,9 +20,3 @@ y2 = first(dense_fa(q, k, v))
 @test y2 ≈ y1
 end
 
-@btime dot_product_attention( $(permutedims(q, (2, 1, 3))), $(permutedims(k, (2, 1, 3))), $(permutedims(v, (2, 1, 3))))
-@btime dense_dpa(q, k, v)
-@btime dense_fa(q, k, v)
-
-1+1
-
