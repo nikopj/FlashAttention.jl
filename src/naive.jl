@@ -56,6 +56,7 @@ function unwindow(X::AbstractArray{T, N2}, outputsize::NTuple{N}, windowsize; st
     return x
 end
 
+block_dpa(q, k, v, windowsize) = windowed_dpa(q, k, v, windowsize)
 function windowed_dpa(q::AbstractArray{T, N}, k::AbstractArray{T, N}, v::AbstractArray{T, N}, windowsize; kws...) where {T, N}
     qw = window(q, windowsize; kws...)
     kw = window(k, windowsize; kws...)

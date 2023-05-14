@@ -5,13 +5,13 @@ function dense_fa_kernel!(
         Q::CuDeviceArray{T, 3}, 
         K::CuDeviceArray{T, 3}, 
         V::CuDeviceArray{T, 3}, 
-        N::Int, d::Int, B::Int) where T
+        N::Int32, d::Int32, B::Int32) where T
     # ASSUME THAT Br == Bc
     ti, tj, tb = threadIdx().x, threadIdx().y, threadIdx().z
     Br, Bc, Bb = blockDim().x,  blockDim().y,  blockDim().z
 
-    row = (blockIdx().x - 1)*Br + ti
-    bat = (blockIdx().z - 1)*Bb + tb
+    row = (blockIdx().x - 1i32)*Br + ti
+    bat = (blockIdx().z - 1i32)*Bb + tb
 
     # load Oi, Qi, mi, li into shared memory
     Qi = CuDynamicSharedArray(T, (Br, d, Bb))
@@ -19,8 +19,8 @@ function dense_fa_kernel!(
     li = CuDynamicSharedArray(T, (Br, 1,  Bb), sizeof(T)*2*Br*d*Bb)
     mi = CuDynamicSharedArray(T, (Br, 1,  Bb), sizeof(T)*Bb*Br*(2*d + 1))
 
-    @inbounds if tj == 1
-        for k=1:d
+    @inbounds if tj == 1i32
+        for k=1i32:d
             Qi[ti, k, tb] = (row <= N && bat <= B) ? Q[row, k, bat] : zero(T)
             Oi[ti, k, tb] = zero(T)
         end
@@ -34,14 +34,14 @@ function dense_fa_kernel!(
     Pij = CuDynamicSharedArray(T, (Br, Bc, Bb), sizeof(T)*Bb*(2*Br*(d + 1) + 2*Bc*d))
 
     # set DPA scale factor
-    τ = T(1 / sqrt(d))
+    τ = T(1i32 / sqrt(d))
 
-    @inbounds for j=1:cld(N, Bc)
-        col = (j-1)*Bc + tj
+    @inbounds for j=1i32:cld(N, Bc)
+        col = (j-1i32)*Bc + tj
 
         # load Kj, Vj into shared memory
-        if ti == 1
-            for k=1:d
+        if ti == 1i32
+            for k=1i32:d
                 Kj[tj, k, tb] = (col <= N && bat <= B) ? K[col, k, bat] : zero(T)
                 Vj[tj, k, tb] = (col <= N && bat <= B) ? V[col, k, bat] : zero(T)
             end
@@ -51,7 +51,7 @@ function dense_fa_kernel!(
 
         # Pij = τ * Qi ⊠ Kj'
         Pval = zero(T)
-        for k=1:d
+        for k=1i32:d
             Pval += τ * Qi[ti, k, tb] * Kj[tj, k, tb]
         end
         Pij[ti, tj, tb] = Pval
@@ -59,7 +59,7 @@ function dense_fa_kernel!(
 
         # compute local row-max
         mij = Pij[ti, 1, tb]
-        for k=2:Bc
+        for k=2i32:Bc
             mij = max(mij, Pij[ti, k, tb])
         end
         Pij[ti, tj, tb] = exp(Pij[ti, tj, tb] - mij)
@@ -67,7 +67,7 @@ function dense_fa_kernel!(
 
         # compute local row-sum
         lij = zero(T)
-        for k=1:Bc
+        for k=1i32:Bc
             lij += Pij[ti, k, tb]
         end
 
@@ -81,7 +81,7 @@ function dense_fa_kernel!(
         # Oi_new = Pij ⊠ Vj
         # d may be larger than Bc, so we split the columns into 
         # blocks of Bc and use an offset.
-        for o_col_offset=0:Bc:(d - 1)
+        for o_col_offset=0i32:Bc:(d - 1i32)
             tj_new = o_col_offset + tj
             if tj_new <= d
                 idx = CartesianIndex((ti, tj_new, tb))
@@ -94,7 +94,7 @@ function dense_fa_kernel!(
             end
         end
 
-        if tj == 1
+        if tj == 1i32
             mi[ti, 1, tb] = mi_new
             li[ti, 1, tb] = li_new
         end
@@ -102,8 +102,8 @@ function dense_fa_kernel!(
     end # end column tiles
 
     # write O, l, m
-    @inbounds if tj == 1 && row <= N && bat <= B
-        for k=1:d
+    @inbounds if tj == 1i32 && row <= N && bat <= B
+        for k=1i32:d
             O[row, k, bat] = Oi[ti, k, tb]
         end
         l[row, 1, bat] = li[ti, 1, tb]
@@ -133,7 +133,7 @@ function dense_fa!(
     blocks = (cld(N, Br), 1, cld(B, Bb))
     shmem = sizeof(T)*Bb*(2*Br*(d + 1) + 2*Bc*d + Br*Bc)
 
-    args = O, l, m, Q, K, V, N, d, B
+    args = O, l, m, Q, K, V, Int32(N), Int32(d), Int32(B)
     @cuda blocks=blocks threads=threads shmem=shmem dense_fa_kernel!(args...)
     return O, l, m
 end

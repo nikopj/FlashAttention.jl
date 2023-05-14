@@ -6,6 +6,7 @@ using LinearAlgebra, SparseArrays
 using NNlib, NNlibCUDA
 using MLUtils
 using CUDA
+using CUDA: i32
 
 include("softmax.jl")
 include("circulant.jl")
