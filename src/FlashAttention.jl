@@ -3,18 +3,29 @@ module FlashAttention
 using Base.Threads
 using LoopVectorization
 using LinearAlgebra, SparseArrays
+using SparseMatricesCSR
 using NNlib, NNlibCUDA
 using MLUtils
 using CUDA
 using CUDA: i32
 
-include("softmax.jl")
-include("circulant.jl")
-include("naive.jl")
-export dense_dpa, windowed_dpa, circulant_dpa
+include("fused_softmax.jl")
+export fused_softmax
 
-include("flash.jl")
-include("cuda/flash.jl")
-export dense_fa, circulant_fa
+include("utils.jl")
+
+include("naive/dense.jl")
+include("naive/windowed.jl")
+include("naive/circulant.jl")
+export dense_dpa!, circulant_dpa!
+export dense_dpa, windowed_dpa, circulant_dpa, block_dpa
+
+include("dense.jl")
+include("windowed.jl")
+include("circulant.jl")
+export dense_fa!, circulant_fa!
+export dense_fa, windowed_fa, circulant_fa, block_fa
+
+#include("cuda/flash.jl")
 
 end

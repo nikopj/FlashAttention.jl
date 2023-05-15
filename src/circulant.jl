@@ -1,36 +1,28 @@
-# m: filter index, 
-# s: shift
-# M: filter-length
-circshift_index(m, s, M) = mod(m - 1 - s, M) + 1
-
-function cartesian_circulant(n, N, M)
-    # filter size must be odd
-    p = (M-1) ÷ 2
-    j = cld(n, M) # col num
-    m = mod(n-1, M) + 1
-    if j <= p
-        m = circshift_index(m, j - p - 1, M) elseif j > N-p 
-        m = circshift_index(m, p - N + j, M)
-    end
-    i = mod((m-1) + (j-1) - p, N) + 1
-    return i, j
+@inline function circulant_fa(Q, K, V, W)
+    N, d, batchsize = size(Q)
+    O = similar(Q)
+    l = similar(Q, N, 1, batchsize)
+    m = similar(Q, N, 1, batchsize)
+    return circulant_fa!(O, l, m, Q, K, V)
 end
 
-function circulant(N::Int, M::Int, Tv=Float64, Ti=Int64) 
-    rowval = (Ti∘first∘cartesian_circulant).(1:N*M, N, M) 
-    colptr = 1 .+ M .* collect(0:N) .|> Ti
-    return SparseMatrixCSC{Tv, Ti}(N, N, colptr, rowval, ones(Tv, N*M))
-end
-
-function circulant_fa(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3}, W::Int) where {T}
+function circulant_fa!(
+        O::AbstractArray{T, 3}, 
+        l::AbstractArray{T, 3}, 
+        m::AbstractArray{T, 3}, 
+        Q::AbstractArray{T, 3}, 
+        K::AbstractArray{T, 3}, 
+        V::AbstractArray{T, 3},
+        W::Int) where {T}
     # W is the windowsize 
-    M = 32000 # SRAM size
+    M = 32_000 # SRAM size
     N, d, batchsize = size(Q)
 
     # row/column block-length
-    Bw = clamp(ceil(Int, M/d), 1, W)
-    #Br = clamp(min(d, ceil(Int, M/d)), 1, N)
-    Br = clamp(ceil(Int, M/8d), 1, N)
+    # Bw = clamp(cld(M, 4d), 1, N)
+    # Br = clamp(min(d, cld(M, 4d)), 1, N)
+    Bw = clamp(cld(M, d), 1, W)
+    Br = clamp(min(d, cld(M, d)), 1, N)
     Bb = 1
 
     # num row/column blocks
@@ -38,15 +30,7 @@ function circulant_fa(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::Abstrac
     Tr = cld(N, Br)
     Tw = cld(W, Bw)
 
-    # initialize variables
-    O = similar(V)
-    l = similar(Q, N, 1, batchsize)
-    m = similar(Q, N, 1, batchsize)
     τ = one(T)/T(sqrt(d))
-
-    fill!(O, zero(T))
-    fill!(l, zero(T))
-    fill!(m, T(-Inf))
 
     @threads for c in CartesianIndices((Tb, Tr))
         b, i = c.I
@@ -59,13 +43,18 @@ function circulant_fa(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::Abstrac
         row_range   = start_idx:end_idx
         batch_range = start_bdx:end_bdx
 
-        Oi = O[row_range, :, batch_range]
-        li = l[row_range, :, batch_range]
-        mi = m[row_range, :, batch_range]
+        @views Oi = O[row_range, :, batch_range]
+        @views li = l[row_range, :, batch_range]
+        @views mi = m[row_range, :, batch_range]
 
-        Oi_new = similar(Oi)
+        fill!(Oi, zero(T))
+        fill!(li, zero(T))
+        fill!(mi, T(-Inf))
+
         miw = similar(mi)
         liw = similar(li)
+        eiw = similar(li)
+        ei  = similar(li)
         mi_new = similar(mi)
         li_new = similar(li)
 
@@ -84,40 +73,46 @@ function circulant_fa(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::Abstrac
                 jjj = cartesian_circulant(nnn, N, W)[1]
                 t = zero(T)
                 for kk=1:d
-                    t += τ*Q[iii, kk, bbb]*K[jjj, kk, bbb]
+                    t += Q[iii, kk, bbb]*K[jjj, kk, bbb]
                 end
-                Piw[ii, ww, bb] = t
+                Piw[ii, ww, bb] = τ*t
             end
             maximum!(miw, Piw)
             @. Piw = exp(Piw - miw)                          
             sum!(liw, Piw)
 
             @. mi_new = max(mi, miw)
-            @. li_new = exp(mi - mi_new)*li + exp(miw - mi_new)*liw
+            @. ei  = exp(mi - mi_new)
+            @. eiw = exp(miw - mi_new)
+            @. li_new = ei*li + eiw*liw
 
             # Oi_new = Piw * V, with circulant indexing
             for ii=1:length(row_range), dd=1:d, bb=1:length(batch_range)
                 iii = row_range[ii]
                 bbb = batch_range[bb]
-                t = zero(T)
+                t = zero(T) # Oi_new
                 for ww=1:length(window_range)
                     www = window_range[ww]
                     nnn = (iii-1)*W + www
                     jjj = cartesian_circulant(nnn, N, W)[1]
                     t += Piw[ii, ww, bb]*V[jjj, dd, bbb]
                 end
-                Oi_new[ii, dd, bb] = t
+                #Oi_new[ii, dd, bb] = t
+                Oi[ii, dd, bb] = (li[ii, 1, bb]*ei[ii, 1, bb]*Oi[ii, dd, bb] + eiw[ii, 1, bb]*t) / li_new[ii, 1, bb]
             end
 
             # write back to memory
-            @. Oi = (li*exp(mi - mi_new)*Oi + exp(miw - mi_new)*Oi_new) / li_new
+            #@. Oi = (li*exp(mi - mi_new)*Oi + exp(miw - mi_new)*Oi_new) / li_new
             li .= li_new
             mi .= mi_new
         end
 
-        O[row_range, :, batch_range] = Oi 
-        l[row_range, :, batch_range] = li 
-        m[row_range, :, batch_range] = mi 
+        # these writes are commented out because they're already happening 
+        # via Oi, li, mi being views of O, l, m.
+    
+        # O[row_range, :, batch_range] = Oi 
+        # l[row_range, :, batch_range] = li 
+        # m[row_range, :, batch_range] = mi 
     end
     return O, l, m
 end
