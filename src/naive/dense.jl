@@ -34,17 +34,23 @@ function dense_dpa(q::AbstractArray{T, N}, k::AbstractArray{T, N}, v::AbstractAr
     return y, P
 end
 
-function dense_dpa_backward(
+function dense_dpa_backward!(
+    dQ::AbstractArray{T, 3}, 
+    dK::AbstractArray{T, 3}, 
+    dV::AbstractArray{T, 3}, 
     Q::AbstractArray{T, 3}, 
     K::AbstractArray{T, 3}, 
     V::AbstractArray{T, 3}, 
     P::AbstractArray{T, 3},
     dO::AbstractArray{T, 3}) where T
 
-    dV = batched_transpose(dP) ⊠ dO
+    τ = one(T) / T(sqrt(d))
     dP = dO ⊠ batched_transpose(V)
-    dS = P .* (dP .- sum(P .* dP, dims=2))
-    dQ = (dS ⊠ K) ./ T(sqrt(d))
-    dK = (batched_transpose(dS) ⊠ Q) ./ T(sqrt(d))
+    s  = sum(P .* dP, dims=2)
+    dS = @. P * (dP - s)
+
+    batched_mul!(dQ, dS, K, τ)
+    batched_mul!(KQ, batched_transpose(dS), Q, τ)
+    batched_mul!(dV, batched_transpose(P), dO)
     return dQ, dK, dV
 end
