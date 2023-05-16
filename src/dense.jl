@@ -110,13 +110,14 @@ function dense_fa_backward(
     l::AbstractArray{T, 3},
     m::AbstractArray{T, 3}) where T
 
-    M  = 1024000 # SRAM size
+    M  = 32_000 # SRAM size
     N, batchsize = size(q, 1), size(q, D)
     d  = size(q, D-1)
 
     # row/column block-length
-    Br = min(d, cld(M, 4*d*batchsize))
-    Bc = cld(M, 4*d*batchsize)
+    Bc = clamp(cld(M, d), 1, N)
+    Br = clamp(min(d, cld(M, d)), 1, N)
+    Bb = 1
 
     # num row/column blocks
     Tr = cld(N, Br)
