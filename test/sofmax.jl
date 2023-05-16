@@ -94,18 +94,25 @@ function softmax!(V::AnyCuMatrix{T}) where T
     #   each block computes the softmax within a row.
     #   if the row is larger than a block, the block must iterate over columns.
 
-    function kernel(V, m, l, M, N)
-        row0  = threadIdx().x + (blockIdx().x - 1i32)*blockDim().x
-        col0  = threadIdx().y + (blockIdx().y - 1i32)*blockDim().y
+    function kernel(V, l, m, M, N, nrow)
+        row0 = blockIdx().x
+        col0 = threadIdx().x 
+
+        nrow = cld(M, gridDim().x)
+
+        # m = CuDynamicSharedArray(T, nrow)
+        # l = CuDynamicSharedArray(T, nrow, sizeof(m))
 
         # -- compute maximum --
         local_max = T(-Inf)
 
         # grid-stride loop
-        i, j = row0, col0
-        while i <= M && j <= N
-            @inbounds local_max = max(local_max, v[i])
-            i += blockDim().x * gridDim().x
+        j = col0
+        while j <= N
+            for i = row0:min(M, row0 + nrow -1)
+                @inbounds local_max = max(local_max, V[i, j])
+            end
+            j += blockDim().x * gridDim().x
         end
 
         block_max = CUDA.reduce_block(max, local_max, T(-Inf), Val(true))
