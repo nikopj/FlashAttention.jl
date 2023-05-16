@@ -40,7 +40,7 @@ function dense_fa!(
     Tr = cld(N, Br)
     Tc = cld(N, Bc)
 
-    τ = one(T)/T(sqrt(d))
+    τ = one(T) / T(sqrt(d))
 
     @threads for c in CartesianIndices((Tb, Tr))
         b, i = c.I
@@ -128,40 +128,40 @@ function dense_fa_backward(
     dK = similar(K)
     dV = similar(V)
 
-    fill!(O, zero(T))
+    τ = one(T) / T(sqrt(d))
 
     @threads for i=1:Tr
         start_idx = (i-1)*Br + 1
         end_idx = min(N, i*Br)
-        Qi  =  Q[start_idx:end_idx, :, :]
-        Oi  =  O[start_idx:end_idx, :, :]
-        dQi = dQ[start_idx:end_idx, :, :]
-        dOi = dO[start_idx:end_idx, :, :]
-        li  =  l[start_idx:end_idx, :, :]
-        mi  =  m[start_idx:end_idx, :, :]
+        @views Qi  =  Q[start_idx:end_idx, :, :]
+        @views Oi  =  O[start_idx:end_idx, :, :]
+        @views dQi = dQ[start_idx:end_idx, :, :]
+        @views dOi = dO[start_idx:end_idx, :, :]
+        @views li  =  l[start_idx:end_idx, :, :]
+        @views mi  =  m[start_idx:end_idx, :, :]
 
         for j=1:Tc
             start_jdx = (j-1)*Bc + 1
             end_jdx = min(N, j*Bc)
-            Kj  =  K[start_jdx:end_jdx, :, :]
-            Vj  =  V[start_jdx:end_jdx, :, :]
+            Kj  = @view K[start_jdx:end_jdx, :, :]
+            Vj  = @view V[start_jdx:end_jdx, :, :]
             dKj = @view dK[start_jdx:end_jdx, :, :]
             dVj = @view dV[start_jdx:end_jdx, :, :]
 
-            Sij = (Qi ⊠ batched_transpose(Kj)) ./ T(sqrt(d))  
-            Pij = @. exp(Sij - mi) / li        
+            batchedmul!(Pij, Qi, batched_transpose(Kj), τ, one(T)) 
+            @. Pij = exp(Pij - mi) / li        
             
-            dVj += batched_transpose(Pij) ⊠ dOi
-            dPij = dOi ⊠ batched_transpose(dVj)
+            batched_mul!(dVj, batched_transpose(Pij), dOi, one(T), one(T))
+            batched_mul!(dPij, dOi, batched_transpose(dVj))
 
             Di   = sum(dOi .* Oi, dims=2)
             dSij = @. Pij * (dPij - Di)
 
-            dQi += (dSij ⊠ Kj) ./ T(sqrt(d))
-            dKj += (batched_transpose(dSij) ⊠ Qi) ./ T(sqrt(d))
+            batchedmul!(dQi, dSij, Kj, τ, one(T)) 
+            batchedmul!(dKj, batched_transpose(dSij), Qi, τ, one(T)) 
         end
 
-        dQ[start_idx:end_idx, :, :] = dQi 
+        # dQ[start_idx:end_idx, :, :] = dQi 
     end
     return dQ, dK, dV
 end
