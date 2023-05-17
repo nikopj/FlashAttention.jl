@@ -1,6 +1,3 @@
-using CUDA
-using CUDA: i32
-
 function softmax!(v::AnyCuVector{T}) where T
     n = length(v)
 
@@ -96,40 +93,36 @@ function softmax!(V::AnyCuMatrix{T}) where T
     #   If the number of rows is greater than the grid dimension, each block must be 
     #   responsible for multiple rows.
 
-    function kernel(V, M, N)
-        row0 = blockIdx().x
-        col0 = threadIdx().x 
-
-        # loop over rows for which this block is responsible for
-        nrow = cld(M, gridDim().x)
+    function kernel(V::CuDeviceMatrix{T}, M, N) where T
+        # number of rows/cols to process per block
+        nrow = cld(M, gridDim().x)  
+        ncol = cld(N, blockDim().x)
 
         m = CuStaticSharedArray(T, 1)
         l = CuStaticSharedArray(T, 1)
+        buf = CuDynamicSharedArray(T, ncol*blockDim().x)
 
-        for drow=0:nrow-1
-            row = row0 + drow * gridDim().x
-            if row > M
-                break
-            end
-
-            # ---------------------
-            # -- compute maximum --
-            # ---------------------
+        # grid-stride loop
+        for row = blockIdx().x : gridDim().x : M
+            # -----------------------------------------------
+            # -- load data into buffer and compute maximum --
+            # -----------------------------------------------
             local_max = T(-Inf)
 
             # block-stride loop
-            col = col0
-            while col <= N
-                @inbounds local_max = max(local_max, V[row, col])
-                col += blockDim().x 
+            for col = threadIdx().x : blockDim().x : ncol*blockDim().x
+                @inbounds buf[col] = col <= N ? V[row, col] : T(-Inf)
+                @inbounds local_max = max(local_max, buf[col])
             end
             row_max = CUDA.reduce_block(max, local_max, T(-Inf), Val(true))
 
-            # reduce_block gathers to thread-1, so we use shared memory to scatter it.
+            # reduce_block gathers to thread-1,
+            # so we use shared memory to scatter it.
             if threadIdx().x == 1i32
                 m[] = row_max
             end
             sync_threads()
+            row_max = m[]
             # ----------
             # -- done --
             # ----------
@@ -140,12 +133,10 @@ function softmax!(V::AnyCuMatrix{T}) where T
             local_sum = zero(T)
 
             # block-stride loop
-            col = col0
-            while col <= N
-                @inbounds e = exp(V[row, col] - m[])
-                @inbounds V[row, col] = e
+            for col = threadIdx().x : blockDim().x : ncol*blockDim().x
+                @inbounds e = exp(buf[col] - row_max)
+                @inbounds buf[col] = e
                 local_sum += e
-                col += blockDim().x 
             end
             row_sum = CUDA.reduce_block(+, local_sum, zero(T), Val(true))
 
@@ -153,6 +144,7 @@ function softmax!(V::AnyCuMatrix{T}) where T
                 l[] = row_sum
             end
             sync_threads()
+            row_sum = l[]
             # ----------
             # -- done --
             # ----------
@@ -161,10 +153,10 @@ function softmax!(V::AnyCuMatrix{T}) where T
             # -- normalize vector -- 
             # ----------------------
             # block-stride loop
-            col = col0
-            while col <= N
-                @inbounds V[row, col] /= l[]
-                col += blockDim().x 
+            for col = threadIdx().x : blockDim().x : ncol*blockDim().x
+                if col <= N
+                    @inbounds V[row, col] = buf[col] / row_sum
+                end
             end
             # ----------
             # -- done --
@@ -174,7 +166,6 @@ function softmax!(V::AnyCuMatrix{T}) where T
     end
 
     dev = device()
-
     wanted_threads = nextwarp(dev, N)
     function compute_threads(max_threads)
         if wanted_threads > max_threads
@@ -183,13 +174,15 @@ function softmax!(V::AnyCuMatrix{T}) where T
             wanted_threads
         end
     end
+    compute_shmem(threads) = sizeof(T)*cld(N, threads)*threads
 
     # how many threads can we launch?
     args = V, Int32(M), Int32(N)
     kernel  = @cuda launch=false kernel(args...)
-    config  = launch_configuration(kernel.fun)
+    config  = launch_configuration(kernel.fun; shmem=compute_shmem∘compute_threads)
     threads = compute_threads(config.threads)
     blocks  = min(config.blocks, M)
-    kernel(args...; threads, blocks)
+    shmem   = compute_shmem(threads)
+    kernel(args...; threads=threads, blocks=blocks, shmem=shmem)
     return V
 end
