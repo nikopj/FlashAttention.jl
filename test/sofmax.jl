@@ -100,72 +100,76 @@ function softmax!(V::AnyCuMatrix{T}) where T
         row0 = blockIdx().x
         col0 = threadIdx().x 
 
+        # loop over rows for which this block is responsible for
         nrow = cld(M, gridDim().x)
-        row_end = min(M, row0 + nrow -1)
 
-        # m = CuDynamicSharedArray(T, nrow)
-        # l = CuDynamicSharedArray(T, nrow, sizeof(m))
+        m = CuStaticSharedArray(T, 1)
+        l = CuStaticSharedArray(T, 1)
 
-        # ---------------------
-        # -- compute maximum --
-        # ---------------------
-        # we compute the maximum over both rows (for which this block is responsible) 
-        # and columns, as it is only used for numerical stability.
-        local_max = T(-Inf)
-
-        # block-stride loop
-        j = col0
-        while j <= N
-            for i = row0:row_end
-                @inbounds local_max = max(local_max, V[i, j])
+        for drow=0:nrow-1
+            row = row0 + drow * gridDim().x
+            if row > M
+                break
             end
-            j += blockDim().x 
-        end
-        block_max = CUDA.reduce_block(max, local_max, T(-Inf), Val(true))
-        # ----------
-        # -- done --
-        # ----------
 
-        # -----------------
-        # -- compute sum --
-        # -----------------
-        # we additionally compute the element-wise exponential
-         
-        local_sum = CUDA.zeros(T, nrow)
-        block_sum = CUDA.zeros(T, nrow)
+            # ---------------------
+            # -- compute maximum --
+            # ---------------------
+            local_max = T(-Inf)
 
-        # block-stride loop
-        j = col0
-        while j <= N
-            for i = row0:row_end
-                @inbounds V[i, j] = exp(V[i, j] - block_max)
-                @inbounds local_sum[i] += V[i, j]
+            # block-stride loop
+            col = col0
+            while col <= N
+                @inbounds local_max = max(local_max, V[row, col])
+                col += blockDim().x 
             end
-            j += blockDim().x 
-        end
+            row_max = CUDA.reduce_block(max, local_max, T(-Inf), Val(true))
 
-        for i = row0:row_end
-            block_sum[i] = CUDA.reduce_block(+, local_sum[i], zero(T), Val(true))
-        end
-        # ----------
-        # -- done --
-        # ----------
-
-        # ----------------------
-        # -- normalize vector -- 
-        # ----------------------
-         
-        # block-stride loop
-        j = col0
-        while j <= N
-            for i = row0:row_end
-                @inbounds V[i, j] /= block_sum[i]
+            # reduce_block gathers to thread-1, so we use shared memory to scatter it.
+            if threadIdx().x == 1i32
+                m[] = row_max
             end
-            j += blockDim().x 
+            sync_threads()
+            # ----------
+            # -- done --
+            # ----------
+
+            # -----------------
+            # -- compute sum --
+            # -----------------
+            local_sum = zero(T)
+
+            # block-stride loop
+            col = col0
+            while col <= N
+                @inbounds e = exp(V[row, col] - m[])
+                @inbounds V[row, col] = e
+                local_sum += e
+                col += blockDim().x 
+            end
+            row_sum = CUDA.reduce_block(+, local_sum, zero(T), Val(true))
+
+            if threadIdx().x == 1i32
+                l[] = row_sum
+            end
+            sync_threads()
+            # ----------
+            # -- done --
+            # ----------
+             
+            # ----------------------
+            # -- normalize vector -- 
+            # ----------------------
+            # block-stride loop
+            col = col0
+            while col <= N
+                @inbounds V[row, col] /= l[]
+                col += blockDim().x 
+            end
+            # ----------
+            # -- done --
+            # ----------
         end
-        # ----------
-        # -- done --
-        # ----------
         return nothing
     end
 
@@ -181,12 +185,11 @@ function softmax!(V::AnyCuMatrix{T}) where T
     end
 
     # how many threads can we launch?
-    args = v, M, N
+    args = V, Int32(M), Int32(N)
     kernel  = @cuda launch=false kernel(args...)
     config  = launch_configuration(kernel.fun)
     threads = compute_threads(config.threads)
-    blocks  = min(config.blocks, cld(M, config.blocks))
-    kernel(args...; threads, blocks, cooperative=true)
-
-    return v
+    blocks  = min(config.blocks, M)
+    kernel(args...; threads, blocks)
+    return V
 end
