@@ -1,7 +1,7 @@
 module FlashAttention
 
 using Base.Threads
-using LoopVectorization
+using KernelAbstractions.Extras: @unroll
 using LinearAlgebra, SparseArrays
 using NNlib, NNlibCUDA
 using MLUtils
@@ -9,7 +9,8 @@ using CUDA
 using CUDA: i32
 
 include("fused_softmax.jl")
-export fused_softmax
+include("cuda/fused_softmax.jl")
+export fused_softmax, fused_softmax!
 
 include("utils.jl")
 
