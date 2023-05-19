@@ -1,0 +1,76 @@
+\documentclass[tikz, border=10pt]{standalone}
+\usepackage{tikz}
+\usetikzlibrary{matrix}
+
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% Define custom color cycle
+\definecolor{color1}{RGB}{166,206,227}
+\definecolor{color2}{RGB}{31,120,180}
+\definecolor{color3}{RGB}{178,223,138}
+\definecolor{color4}{RGB}{51,160,44}
+\definecolor{color5}{RGB}{251,154,153}
+\definecolor{color6}{RGB}{227,26,28}
+\definecolor{color7}{RGB}{253,191,111}
+\definecolor{color8}{RGB}{255,127,0}
+\definecolor{color9}{RGB}{202,178,214}
+\definecolor{color10}{RGB}{106,61,154}
+\pgfplotscreateplotcyclelist{customcolors}{
+  color1,mark=*,mark options={fill=color1!80!black},mark repeat=1\\
+  color2,mark=square*,mark options={fill=color2!80!black},mark repeat=1\\
+  color3,mark=diamond*,mark options={fill=color3!80!black},mark repeat=1\\
+  color4,mark=triangle*,mark options={fill=color4!80!black},mark repeat=1\\
+  color5,mark=x,mark options={color=color5!80!black},mark repeat=1\\
+  color6,mark=otimes*,mark options={fill=color6!80!black},mark repeat=1\\
+  color7,mark=star,mark options={fill=color7!80!black},mark repeat=1\\
+  color8,mark=pentagon*,mark options={fill=color8!80!black},mark repeat=1\\
+  color9,mark=*,mark options={fill=color9!80!black},mark repeat=1\\
+  color10,mark=square*,mark options={fill=color10!80!black},mark repeat=1\\
+}
+
+\begin{document}
+
+\pgfplotstableread[col sep=space]{../../logs/compare1.txt}\datatable
+
+\begin{tikzpicture}
+  \begin{loglogaxis}[
+      xlabel={sequence length ($N$)},
+      ylabel={time (s)},
+      xtick=data,
+      xticklabels from table={\datatable}{N}, % Use 'Label' column as x-axis labels
+      title={},
+      legend entries = {
+        dense\_dpa,
+        dense\_fa,
+        block\_dpa,
+        block\_fa,
+        wind\_dpa,
+        wind\_fa,
+        circ\_dpa,
+        circ\_fa,
+      },
+      legend style={nodes={scale=0.9, transform shape}},
+      legend pos=north west,
+      legend cell align={left},
+      grid=major,
+      width=12cm,
+      height=8cm,
+      cycle list name=customcolors,
+      every axis plot/.append style={line width=1pt}
+    ]
+
+    \addplot+ table[x=N, y=dense_dpa] {\datatable};
+    \addplot+ table[x=N, y=dense_fa] {\datatable};
+    \addplot+ table[x=N, y=block_dpa] {\datatable};
+    \addplot+ table[x=N, y=block_fa] {\datatable};
+    \addplot+ table[x=N, y=wind_dpa] {\datatable};
+    \addplot+ table[x=N, y=wind_fa] {\datatable};
+    \addplot+ table[x=N, y=circ_dpa] {\datatable};
+    \addplot+ table[x=N, y=circ_fa] {\datatable};
+
+  \end{loglogaxis}
+\end{tikzpicture}
+
+
+\end{document}
