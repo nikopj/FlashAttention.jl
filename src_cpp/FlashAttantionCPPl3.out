@@ -1,0 +1,68 @@
+Architecture:        x86_64
+CPU op-mode(s):      32-bit, 64-bit
+Byte Order:          Little Endian
+CPU(s):              48
+On-line CPU(s) list: 0-47
+Thread(s) per core:  1
+Core(s) per socket:  24
+Socket(s):           2
+NUMA node(s):        2
+Vendor ID:           GenuineIntel
+CPU family:          6
+Model:               85
+Model name:          Intel(R) Xeon(R) Platinum 8268 CPU @ 2.90GHz
+Stepping:            7
+CPU MHz:             3900.000
+CPU max MHz:         3900.0000
+CPU min MHz:         1200.0000
+BogoMIPS:            5800.00
+Virtualization:      VT-x
+L1d cache:           32K
+L1i cache:           32K
+L2 cache:            1024K
+L3 cache:            36608K
+NUMA node0 CPU(s):   0-23
+NUMA node1 CPU(s):   24-47
+Flags:               fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cdp_l3 invpcid_single intel_ppin ssbd mba ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm mpx rdt_a avx512f avx512dq rdseed adx smap clflushopt clwb intel_pt avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local dtherm ida arat pln pts pku ospke avx512_vnni md_clear flush_l1d arch_capabilities
+icpc -std=c++11 -O3 -march=native -fopenmp    FlashAttention.cpp  -mkl -o FlashAttention
+FlashAttention.cpp(95): warning #823: reference is to variable "i" (declared at line 77) -- under old for-init scoping rules it would have been variable "i" (declared at line 91)
+              O.block(i*Br, 0, colr, d) = O_i;
+                      ^
+
+FlashAttention.cpp(96): warning #823: reference is to variable "i" (declared at line 77) -- under old for-init scoping rules it would have been variable "i" (declared at line 91)
+              l.segment(Br*i, colr) = l_new;
+                           ^
+
+FlashAttention.cpp(97): warning #823: reference is to variable "i" (declared at line 77) -- under old for-init scoping rules it would have been variable "i" (declared at line 91)
+              m.segment(Br*i, colr) = m_new;
+                           ^
+
+FlashAttention.cpp(153): warning #823: reference is to variable "i" (declared at line 129) -- under old for-init scoping rules it would have been variable "i" (declared at line 149)
+              l.segment(Br*i, colr) = l_new;
+                           ^
+
+FlashAttention.cpp(154): warning #823: reference is to variable "i" (declared at line 129) -- under old for-init scoping rules it would have been variable "i" (declared at line 149)
+              m.segment(Br*i, colr) = m_new;
+                           ^
+
+48N,d,cache,Naive,FA,pFA,NaiveFlop,FAFlop,pFAFlop,Pass
+1024,64,4576000,0.019250,0.028256,0.001859,14.544201,9.908260,150.569749,Forward
+1024,64,4576000,0.016394,0.035129,0.003899,17.078004,7.969806,71.803743,Backward
+2048,64,4576000,0.100386,0.052198,0.003599,11.155776,21.454317,311.163983,Forward
+2048,64,4576000,0.075409,0.120437,0.011563,14.850697,9.298503,96.846107,Backward
+8192,64,4576000,2.166141,0.674161,0.057856,-4.963130,-15.946983,-185.820622,Forward
+8192,64,4576000,1.241447,3.138750,0.271643,14.433213,5.708664,65.961746,Backward
+16384,64,4576000,10.308952,2.592327,0.564605,-1.390486,-5.529570,-25.388476,Forward
+16384,64,4576000,5.072415,15.803633,1.507998,14.129812,4.535177,47.528104,Backward
+32768,64,4576000,48.852667,10.351404,1.879366,0.000000,0.000000,0.000000,Forward
+32768,64,4576000,21.970777,53.965029,4.282856,13.048654,5.312497,66.938755,Backward
+1024,128,4576000,0.013603,0.017961,0.003727,40.313833,30.532787,147.152081,Forward
+1024,128,4576000,0.013128,0.032092,0.008116,41.772436,17.088319,67.574394,Backward
+2048,128,4576000,0.096988,0.050401,0.009067,22.617495,43.523016,241.924129,Forward
+2048,128,4576000,0.080060,0.131799,0.026820,27.399817,16.643699,81.791389,Backward
+8192,128,4576000,1.946810,0.675637,0.120233,-10.817060,-31.168751,-175.150032,Forward
+8192,128,4576000,1.271160,3.131210,0.376590,27.610950,11.209064,93.199286,Backward
+16384,128,4576000,9.025245,2.682505,0.355375,-3.111090,-10.467211,-79.010456,Forward
+16384,128,4576000,5.087917,13.630582,1.236229,27.593166,10.299761,113.564548,Backward
+32768,128,4576000,43.263812,11.585417,1.279645,0.000000,0.000000,0.000000,Forward
+32768,128,4576000,21.130032,50.578886,4.204279,26.576721,11.102794,133.570327,Backward

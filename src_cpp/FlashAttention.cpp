@@ -3,7 +3,8 @@
 #include <iostream>
 #include <cmath>
 #include <fstream>
-#define EIGEN_USE_BLAS
+// #define EIGEN_USE_BLAS
+#define EIGEN_USE_MKL_ALL
 #include <eigen3/Eigen/Dense>
 #include <omp.h>
 #include <chrono>
@@ -225,7 +226,6 @@ void OneDFastBack(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eige
         Eigen::MatrixXd O_i = O.block(i*Br, 0, colr, d);
         Eigen::MatrixXd Q_i = Q.block(i*Br, 0, colr, d);
         Eigen::VectorXd l_i = l.segment(Br*i, colr);
-        Eigen::DiagonalMatrix<double, Eigen::Dynamic> D(l_i.size());
         Eigen::VectorXd m_i = m.segment(Br*i, colr);
 
         for (int j = 0; j < Tc; j++)
@@ -237,7 +237,6 @@ void OneDFastBack(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, const Eige
             Eigen::MatrixXd dV_j = dV.block(j*Bc, 0, colc, d);
             Eigen::MatrixXd S_ij = lambda*Q_i*K_j;
             Eigen::MatrixXd P_ij = (S_ij.colwise() - m_i).array().exp().matrix();
-            // for (long k = 0; k < P_ij.rows(); k++){P_ij.row(k) /= l_i(k);}
             P_ij = P_ij.array().colwise()/l_i.array();
             dV_j = dV_j + P_ij.transpose()*dO_i;
             Eigen::MatrixXd dP_ij = dO_i*V_j.transpose();
@@ -302,7 +301,6 @@ void OneDParallelCPUBack(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, con
 
             Eigen::MatrixXd S_ij = lambda*Q_i*K_j;
             Eigen::MatrixXd P_ij = (S_ij.colwise() - m_i).array().exp().matrix();
-            // for (long k = 0; k < P_ij.rows(); k++){P_ij.row(k) /= l_i(k);}
             P_ij = P_ij.array().colwise()/l_i.array();
             dV_j = dV_j + P_ij.transpose()*dO_i;
             Eigen::MatrixXd dP_ij = dO_i*V_j.transpose();
@@ -360,16 +358,16 @@ void OneDParallelCPUBack(const Eigen::MatrixXd& Q, const Eigen::MatrixXd& K, con
 int main()
 {
     omp_set_num_threads(omp_get_num_procs()); 
-    // omp_set_nested(1);
-    // int repeat = 100;
-    // int Ns[] = {256, 512, 2048, 4096, 4096*4, 4096*8};
-    int repeat = 100;
-    int Ns[] = {256,512};
-    int Ds[] = {32,64};
-    int cache = 24000;
+    cout<<omp_get_num_procs();
+    // omp_set_max_active_levels(2);
+    int repeat = 10;
+    int Ns[] = {1024,2048,2048*4,2048*8,2048*16};
+    int Ds[] = {64,128};
+    // int caches[] = {4000, 128000, 4576000};
+    int cache = 4000;
 
     double tt1 = 0.0, tt2 = 0.0;
-    printf("N,d,Naive,FA,pFA,NaiveFlop,FAFlop,pFAFlop,Pass\n");
+    printf("N,d,cache,Naive,FA,pFA,NaiveFlop,FAFlop,pFAFlop,Pass\n");
     for(auto d : Ds)
     {
         for(auto N : Ns)
@@ -409,21 +407,32 @@ int main()
             double pFA = tt2 - tt1;
             double epFA = (O.array() - O1.array()).abs().sum();
 
-            double flopsN = 4*repeat*N*N*(d + 11.0/4);
-            double flopsFA = 4*repeat*N*N*(d + 11.0/4);
+            double flopsN = 4*repeat*N*N*(d + 11.0/4)/1000000000;
+            double flopsFA = 4*repeat*N*N*(d + 11.0/4)/1000000000;
 
-            printf("%d,%d,%f,%f,%f,%f,%f,%f,%s\n",
-            N, d, naive/repeat,FA/repeat,pFA/repeat,
-            1e-9*flopsN/naive,1e-9*flopsFA/FA,1e-9*flopsFA/pFA,"Forward");
+            printf("%d,%d,%d,%f,%f,%f,%f,%f,%f,%s\n",
+            N, d,cache, naive/repeat,FA/repeat,pFA/repeat,
+            flopsN/naive,flopsFA/FA,flopsFA/pFA,"Forward");
 
             //Backward Pass Dense
 
+            tt1 = omp_get_wtime();
+            double FaFac = 0.0;
             //Input Prep
             Eigen::MatrixXd S = Q*(K.transpose());
+            double tt3 = omp_get_wtime();
             Eigen::VectorXd Max = S.rowwise().maxCoeff();
+            double tt4 = omp_get_wtime();
+            FaFac += tt4-tt3;
             Eigen::MatrixXd P = (S.colwise() - Max).array().exp().matrix();
+            tt3 = omp_get_wtime();
             Eigen::VectorXd l = P.rowwise().sum().array();
+            tt4 = omp_get_wtime();
+            FaFac += tt4-tt3;
+            FaFac *= repeat;
             for(long i = 0; i < P.rows(); i++){P.row(i) /= l(i);}
+            tt2 = omp_get_wtime();
+            double naiveFac = repeat*(tt2-tt1);
             // Run starts here
             
             tt1 = omp_get_wtime();
@@ -450,12 +459,12 @@ int main()
             }
             tt2 = omp_get_wtime();
             pFA = tt2 - tt1;
-            flopsN = 4*repeat*N*N*(d + 11.0/4);
-            flopsFA = 4*repeat*N*N*(d + 11.0/4);
+            flopsN = 1e-9*4*repeat*N*N*(d + 11.0/4);
+            flopsFA = 1e-9*4*repeat*N*N*(d + 11.0/4);
 
-            printf("%d,%d,%f,%f,%f,%f,%f,%f,%s\n",
-            N, d, naive/repeat,FA/repeat,pFA/repeat,
-            1e-9*flopsN/naive,1e-9*flopsFA/FA,1e-9*flopsFA/pFA,"Backward");
+            printf("%d,%d,%d,%f,%f,%f,%f,%f,%f,%s\n",
+            N, d, cache, naive/repeat,FA/repeat,pFA/repeat,
+            flopsN/naive,flopsFA/FA,flopsFA/pFA,"Backward");
         }
     }
     return 0;
