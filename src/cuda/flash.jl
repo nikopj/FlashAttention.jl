@@ -76,7 +76,8 @@ function dense_fa_kernel!(
         mi_new = max(mi[idx1], mij)
         expmi  = exp(mi[idx1]  - mi_new)
         expmij = exp(mij - mi_new)
-        li_new = expmi*li[idx1] + expmij*lij
+        li_idx1 = li[idx1]
+        li_new = expmi*li_idx1 + expmij*lij
 
         # Oi_new = Pij ⊠ Vj
         # d may be larger than Bc, so we split the columns into 
@@ -90,7 +91,7 @@ function dense_fa_kernel!(
                 for k=1:Bc
                     Oi_new += Pij[ti, k, tb]*Vj[k, tj_new, tb]
                 end
-                Oi[idx] = (li[idx1]*expmi*Oi_old  + expmij*Oi_new) / li_new
+                Oi[idx] = (li_idx1*expmi*Oi_old  + expmij*Oi_new) / li_new
             end
         end
 
@@ -112,7 +113,7 @@ function dense_fa_kernel!(
     return nothing
 end
 
-function dense_fa(Q::CuArray{T, 3}, K::CuArray{T, 3}, V::CuArray{T, 3}) where T
+@inline function dense_fa(Q::CuArray{T, 3}, K::CuArray{T, 3}, V::CuArray{T, 3}) where T
     N, d, B = size(Q)
     return dense_fa!(similar(Q), similar(Q, N, 1, B), similar(Q, N, 1, B), Q, K, V)
 end
