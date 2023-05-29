@@ -1,0 +1,73 @@
+Architecture:        x86_64
+CPU op-mode(s):      32-bit, 64-bit
+Byte Order:          Little Endian
+CPU(s):              48
+On-line CPU(s) list: 0-47
+Thread(s) per core:  1
+Core(s) per socket:  24
+Socket(s):           2
+NUMA node(s):        2
+Vendor ID:           GenuineIntel
+CPU family:          6
+Model:               85
+Model name:          Intel(R) Xeon(R) Platinum 8268 CPU @ 2.90GHz
+Stepping:            7
+CPU MHz:             3900.000
+CPU max MHz:         3900.0000
+CPU min MHz:         1200.0000
+BogoMIPS:            5800.00
+Virtualization:      VT-x
+L1d cache:           32K
+L1i cache:           32K
+L2 cache:            1024K
+L3 cache:            36608K
+NUMA node0 CPU(s):   0-23
+NUMA node1 CPU(s):   24-47
+Flags:               fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cdp_l3 invpcid_single intel_ppin ssbd mba ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm mpx rdt_a avx512f avx512dq rdseed adx smap clflushopt clwb intel_pt avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local dtherm ida arat pln pts pku ospke avx512_vnni md_clear flush_l1d arch_capabilities
+icpc -std=c++11 -O3 -march=native -fopenmp    FlashAttention.cpp  -mkl -o FlashAttention
+FlashAttention.cpp(95): warning #823: reference is to variable "i" (declared at line 77) -- under old for-init scoping rules it would have been variable "i" (declared at line 91)
+              O.block(i*Br, 0, colr, d) = O_i;
+                      ^
+
+FlashAttention.cpp(96): warning #823: reference is to variable "i" (declared at line 77) -- under old for-init scoping rules it would have been variable "i" (declared at line 91)
+              l.segment(Br*i, colr) = l_new;
+                           ^
+
+FlashAttention.cpp(97): warning #823: reference is to variable "i" (declared at line 77) -- under old for-init scoping rules it would have been variable "i" (declared at line 91)
+              m.segment(Br*i, colr) = m_new;
+                           ^
+
+FlashAttention.cpp(153): warning #823: reference is to variable "i" (declared at line 129) -- under old for-init scoping rules it would have been variable "i" (declared at line 149)
+              l.segment(Br*i, colr) = l_new;
+                           ^
+
+FlashAttention.cpp(154): warning #823: reference is to variable "i" (declared at line 129) -- under old for-init scoping rules it would have been variable "i" (declared at line 149)
+              m.segment(Br*i, colr) = m_new;
+                           ^
+
+FlashAttention.cpp(366): error: expected an identifier
+      int caches = [4000, 128000, 4576000];
+                    ^
+
+FlashAttention.cpp(366): error: expected an identifier
+      int caches = [4000, 128000, 4576000];
+                          ^
+
+FlashAttention.cpp(366): error: expected an identifier
+      int caches = [4000, 128000, 4576000];
+                                  ^
+
+FlashAttention.cpp(366): error: expected a "{" introducing a lambda body
+      int caches = [4000, 128000, 4576000];
+                                          ^
+
+FlashAttention.cpp(370): error: this range-based "for" statement requires a suitable "begin" function and none was found
+      for (auto cache : caches){
+                        ^
+
+FlashAttention.cpp(370): error: this range-based "for" statement requires a suitable "end" function and none was found
+      for (auto cache : caches){
+                        ^
+
+compilation aborted for FlashAttention.cpp (code 2)
+make: *** [<builtin>: FlashAttention] Error 2
