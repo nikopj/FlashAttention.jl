@@ -1,3 +1,13 @@
+function sm_naive!(u::AbstractVector, v::AbstractVector) 
+    m = maximum(v)
+    @. u = exp(v)
+    l = sum(u)
+    @. u /= l
+    return u
+end
+sm_naive!(v) = softmax_impl_naive!(v, v)
+sm_naive(v) = softmax_imple_naive!(similar(v), v)
+
 function fused_softmax!(v::AnyCuVector{T}) where T
     n = length(v)
 
