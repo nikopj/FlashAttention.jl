@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 function sm_naive!(u::AbstractVector, v::AbstractVector) 
     m = maximum(v)
     @. u = exp(v)
@@ -12,6 +13,10 @@ function fused_softmax!(v::AnyCuVector{T}) where T
     n = length(v)
 
     function kernel(v, m, l, n)
+=======
+function fused_softmax!(u::AnyCuVector{T}, v::AnyCuVector{T}) where T
+    function kernel(u, v, m, l, N)
+>>>>>>> Stashed changes
         g  = this_grid()
         i0 = threadIdx().x + (blockIdx().x - 1i32)*blockDim().x
 
@@ -20,7 +25,7 @@ function fused_softmax!(v::AnyCuVector{T}) where T
 
         # grid-stride loop
         i = i0
-        while i <= n
+        while i <= N
             @inbounds local_max = max(local_max, v[i])
             i += blockDim().x * gridDim().x
         end
@@ -37,9 +42,9 @@ function fused_softmax!(v::AnyCuVector{T}) where T
         # grid-stride loop
         local_sum = zero(T)
         i = i0
-        while i <= n
-            @inbounds v[i] = exp(v[i] - m)
-            @inbounds local_sum += v[i]
+        while i <= N
+            @inbounds u[i] = exp(v[i] - m)
+            @inbounds local_sum += u[i]
             i += blockDim().x * gridDim().x
         end
 
@@ -54,8 +59,8 @@ function fused_softmax!(v::AnyCuVector{T}) where T
         # -- normalize vector -- 
         # grid-stride loop
         i = i0
-        while i <= n
-            @inbounds v[i] /= l
+        while i <= N
+            @inbounds u[i] /= l
             i += blockDim().x * gridDim().x
         end
         # -- done --
@@ -63,6 +68,7 @@ function fused_softmax!(v::AnyCuVector{T}) where T
         return nothing
     end
 
+    N = length(v)
     m = similar(v, 1)
     l = CUDA.zeros(T, 1)
     fill!(m, T(-Inf))
@@ -79,14 +85,16 @@ function fused_softmax!(v::AnyCuVector{T}) where T
     end
 
     # how many threads can we launch?
-    args = v, m, l, n
+    args = u, v, m, l, N
     kernel  = @cuda launch=false kernel(args...)
     config  = launch_configuration(kernel.fun)
     threads = compute_threads(config.threads)
-    blocks  = min(config.blocks, cld(n, config.blocks))
+    blocks  = min(config.blocks, cld(N, config.blocks))
     kernel(args...; threads, blocks, cooperative=true)
-    return v
+    return u
 end
+fused_softmax!(v) = fused_softmax!(v, v)
+fused_softmax(v) = fused_softmax!(similar(v), v)
 
 @inline function fused_softmax!(V::AnyCuMatrix{T}; dims=1) where T
     @assert dims in (1, 2) "dims=$dims must be 1 or 2"
